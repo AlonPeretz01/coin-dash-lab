@@ -171,9 +171,13 @@ class CoinDash extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.coin, () => {
       if (this.finished) return;
       this.score++;
+      this.beep(880, 0.12);
       this.placeCoin();
     });
-    this.physics.add.overlap(this.player, this.drones, () => this.finish('A drone caught you!'));
+    this.physics.add.overlap(this.player, this.drones, () => {
+      if (!this.finished) this.beep(110, 0.4, 'sawtooth');
+      this.finish('A drone caught you!');
+    });
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = this.input.keyboard.addKeys('W,A,S,D,R');
     const restart = (difficulty) => {
@@ -200,6 +204,21 @@ class CoinDash extends Phaser.Scene {
       this.deadline += this.time.now - this.pausedAt;
       this.pauseText.destroy();
     }
+  }
+
+  // Synthesized with Web Audio via Phaser's context (unlocked on first key press).
+  beep(freq, secs, type = 'sine') {
+    const ctx = this.sound.context;
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + secs);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + secs);
   }
 
   placeCoin() {
