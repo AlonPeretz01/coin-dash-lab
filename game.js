@@ -57,6 +57,19 @@ const PIXEL_ART = {
     '.D.........D.',
     'D...........D',
     '.............'
+  ] },
+  // 10x10 grid, 2px cells -> 20x20 freeze power-up star
+  powerup: { cell: 2, rows: [
+    '....CC....',
+    '....CC....',
+    '...CWWC...',
+    'CCCCWWCCCC',
+    '.CCWWWWCC.',
+    '..CCWWCC..',
+    '..CCCCCC..',
+    '.CCC..CCC.',
+    '.CC....CC.',
+    'C........C'
   ] }
 };
 
@@ -67,10 +80,10 @@ class CoinDash extends Phaser.Scene {
     const col = COIN_DASH.colors;
     const palette = {
       P: col.player, D: col.drone, K: col.eye, Y: col.coin,
-      O: col.coinShade, W: col.coinShine
+      O: col.coinShade, W: col.coinShine, C: col.powerup
     };
     // Player "mouth" uses the dark lime; drones use 'D' for their body.
-    const perTexture = { player: { D: col.playerDark } };
+    const perTexture = { player: { D: col.playerDark }, powerup: { W: col.powerupShine } };
     Object.keys(PIXEL_ART).forEach((key) => {
       if (this.textures.exists(key)) return; // survives scene.restart()
       const art = PIXEL_ART[key];
@@ -164,7 +177,7 @@ class CoinDash extends Phaser.Scene {
     // Two-frame invader shuffle (same 26x26 texture size, so bodies are unaffected).
     this.droneFrame = 0;
     this.time.addEvent({ delay: 350, loop: true, callback: () => {
-      if (this.finished || this.paused) return;
+      if (this.finished || this.paused || this.frozen) return;
       this.droneFrame = 1 - this.droneFrame;
       this.drones.getChildren().forEach((d) => d.setTexture('drone' + this.droneFrame));
     } });
@@ -175,9 +188,11 @@ class CoinDash extends Phaser.Scene {
       this.placeCoin();
     });
     this.physics.add.overlap(this.player, this.drones, () => {
+      if (this.frozen) return; // frozen invaders are harmless
       if (!this.finished) this.beep(110, 0.4, 'sawtooth');
       this.finish('A drone caught you!');
     });
+    this.setupPowerup();
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = this.input.keyboard.addKeys('W,A,S,D,R');
     const restart = (difficulty) => {
@@ -237,6 +252,74 @@ class CoinDash extends Phaser.Scene {
     this.coin.body.reset(x, y);
   }
 
+  // Freeze power-up. All timers live on this.time, so scene.restart() clears them.
+  setupPowerup() {
+    const c = COIN_DASH;
+    this.frozen = false;
+    this.freezeUntil = 0;
+    this.powerupExpiry = null;
+    this.powerup = this.add.image(0, 0, 'powerup').setDisplaySize(20, 20).setVisible(false);
+    this.physics.add.existing(this.powerup);
+    this.powerup.body.enable = false;
+    this.freezeText = this.add.text(c.width / 2, 52, '', {
+      fontFamily: '"Courier New", Courier, monospace', fontSize: '18px', fontStyle: 'bold',
+      color: c.colors.freezeText
+    }).setOrigin(0.5, 0).setVisible(false);
+    this.time.addEvent({ delay: c.powerupEvery * 1000, loop: true, callback: () => this.spawnPowerup() });
+    this.physics.add.overlap(this.player, this.powerup, () => {
+      if (this.finished || !this.powerup.visible) return;
+      this.hidePowerup();
+      this.freezeDrones();
+    });
+  }
+
+  spawnPowerup() {
+    // Only one at a time, never during a freeze or after game over.
+    if (this.finished || this.frozen || this.powerup.visible) return;
+    const c = COIN_DASH;
+    let x, y;
+    do {
+      x = Phaser.Math.Between(25, c.width - 25);
+      y = Phaser.Math.Between(70, c.height - 25);
+    } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 80
+      || Phaser.Math.Distance.Between(x, y, this.coin.x, this.coin.y) < 30);
+    this.powerup.setPosition(x, y).setVisible(true);
+    this.powerup.body.enable = true;
+    this.powerup.body.reset(x, y);
+    this.powerupExpiry = this.time.delayedCall(c.powerupLifetime * 1000, () => this.hidePowerup());
+  }
+
+  hidePowerup() {
+    this.powerup.setVisible(false);
+    this.powerup.body.enable = false;
+    if (this.powerupExpiry) this.powerupExpiry.remove(false);
+    this.powerupExpiry = null;
+  }
+
+  freezeDrones() {
+    const c = COIN_DASH;
+    this.frozen = true;
+    this.freezeUntil = this.time.now + c.freezeSeconds * 1000;
+    this.drones.getChildren().forEach((d) => {
+      d.setData('velocity', { x: d.body.velocity.x, y: d.body.velocity.y });
+      d.body.setVelocity(0, 0);
+      d.setTintFill(c.colors.frozenTint);
+    });
+    this.freezeText.setText(`FREEZE! ${c.freezeSeconds}`).setVisible(true);
+    this.time.delayedCall(c.freezeSeconds * 1000, () => this.unfreezeDrones());
+  }
+
+  unfreezeDrones() {
+    this.freezeText.setVisible(false);
+    if (this.finished) return; // game over: everything stays put
+    this.frozen = false;
+    this.drones.getChildren().forEach((d) => {
+      const v = d.getData('velocity');
+      d.body.setVelocity(v.x, v.y);
+      d.clearTint();
+    });
+  }
+
   update() {
     if (this.finished || this.paused) return;
     const dx = Number(this.cursors.right.isDown || this.keys.D.isDown)
@@ -245,6 +328,10 @@ class CoinDash extends Phaser.Scene {
       - Number(this.cursors.up.isDown || this.keys.W.isDown);
     const direction = new Phaser.Math.Vector2(dx, dy).normalize().scale(COIN_DASH.playerSpeed);
     this.player.body.setVelocity(direction.x, direction.y);
+    if (this.frozen) {
+      const left = Math.max(0, Math.ceil((this.freezeUntil - this.time.now) / 1000));
+      this.freezeText.setText(`FREEZE! ${left}`);
+    }
     const seconds = Math.max(0, Math.ceil((this.deadline - this.time.now) / 1000));
     const label = COIN_DASH.difficulties[this.difficulty].label.toUpperCase();
     this.hud.setText(`SCORE ${String(this.score).padStart(3, '0')}  BEST ${String(this.best).padStart(3, '0')}`
