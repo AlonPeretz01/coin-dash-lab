@@ -135,6 +135,7 @@ class CoinDash extends Phaser.Scene {
     this.score = 0;
     this.best = this.loadBest();
     this.finished = false;
+    this.paused = false;
     this.deadline = this.time.now + c.roundSeconds * 1000;
     this.physics.world.setBounds(0, 44, c.width, c.height - 44);
     this.makePixelTextures();
@@ -163,7 +164,7 @@ class CoinDash extends Phaser.Scene {
     // Two-frame invader shuffle (same 26x26 texture size, so bodies are unaffected).
     this.droneFrame = 0;
     this.time.addEvent({ delay: 350, loop: true, callback: () => {
-      if (this.finished) return;
+      if (this.finished || this.paused) return;
       this.droneFrame = 1 - this.droneFrame;
       this.drones.getChildren().forEach((d) => d.setTexture('drone' + this.droneFrame));
     } });
@@ -175,10 +176,30 @@ class CoinDash extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.drones, () => this.finish('A drone caught you!'));
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = this.input.keyboard.addKeys('W,A,S,D,R');
-    this.input.keyboard.on('keydown-R', () => this.scene.restart({ difficulty: this.difficulty }));
-    this.input.keyboard.on('keydown-ONE', () => this.scene.restart({ difficulty: 'easy' }));
-    this.input.keyboard.on('keydown-TWO', () => this.scene.restart({ difficulty: 'normal' }));
-    this.input.keyboard.on('keydown-THREE', () => this.scene.restart({ difficulty: 'hard' }));
+    const restart = (difficulty) => {
+      if (this.paused) this.physics.resume(); // physics pause must not outlive the scene
+      this.scene.restart({ difficulty });
+    };
+    this.input.keyboard.on('keydown-R', () => restart(this.difficulty));
+    this.input.keyboard.on('keydown-ONE', () => { if (!this.paused) restart('easy'); });
+    this.input.keyboard.on('keydown-TWO', () => { if (!this.paused) restart('normal'); });
+    this.input.keyboard.on('keydown-THREE', () => { if (!this.paused) restart('hard'); });
+    this.input.keyboard.on('keydown-P', () => this.togglePause());
+  }
+
+  togglePause() {
+    if (this.finished) return;
+    this.paused = !this.paused;
+    if (this.paused) {
+      this.physics.pause();
+      this.pausedAt = this.time.now;
+      this.pauseText = this.add.text(COIN_DASH.width / 2, COIN_DASH.height / 2,
+        'Paused – press P to resume', { font: '24px monospace', color: '#ffffff' }).setOrigin(0.5);
+    } else {
+      this.physics.resume();
+      this.deadline += this.time.now - this.pausedAt;
+      this.pauseText.destroy();
+    }
   }
 
   placeCoin() {
@@ -194,7 +215,7 @@ class CoinDash extends Phaser.Scene {
   }
 
   update() {
-    if (this.finished) return;
+    if (this.finished || this.paused) return;
     const dx = Number(this.cursors.right.isDown || this.keys.D.isDown)
       - Number(this.cursors.left.isDown || this.keys.A.isDown);
     const dy = Number(this.cursors.down.isDown || this.keys.S.isDown)
