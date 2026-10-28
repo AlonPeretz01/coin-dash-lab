@@ -6,5 +6,21 @@ window.COIN_DASH = {
   playerSpeed: 240,
   droneSpeed: 105,
   droneCount: 3,
-  colors: { background: 0x101c31, player: 0x71e8ce, coin: 0xffd166, drone: 0xff657a }
+  // Retro 8-bit arcade palette (black screen, a few loud colours).
+  colors: {
+    background: 0x000000,
+    player: 0x39ff6a,      // lime
+    playerDark: 0x0f7a2c,
+    coin: 0xffe62e,        // yellow
+    coinShade: 0xff9a1f,
+    coinShine: 0xffffff,
+    drone: 0xff2e93,       // hot pink
+    eye: 0x000000,
+    accent: 0x00e5ff,      // cyan (HUD line, borders)
+    stars: [0x00e5ff, 0xff2e93, 0xffe62e, 0xffffff],
+    hudText: '#00e5ff',
+    titleText: '#ffe62e',
+    bodyText: '#ffffff',
+    blinkText: '#ff2e93'
+  }
 };
