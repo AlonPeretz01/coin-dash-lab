@@ -6,12 +6,23 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="layout">
 <main>
   <header><p>LAB 3 · STARTER GAME</p><h1>Coin Dash - Alon, Einav and Tal</h1>
   <p>Collect yellow coins. Dodge pink invaders. How many can you collect in 45 seconds?</p></header>
   <div id="game" aria-label="Coin Dash game. Move with arrow keys or WASD."></div>
   <p>Move: <strong>arrow keys / WASD</strong> · Restart: <strong>R</strong> · Difficulty: <strong>1 / 2 / 3</strong></p>
 </main>
+<aside class="features" aria-label="Added features">
+  <h2>Added features</h2>
+  <ul>
+    <li><strong>Retro arcade look</strong><span>Pixel-art player, coins and animated invaders on a black starfield.</span></li>
+    <li><strong>Difficulty</strong><span>Press 1 / 2 / 3 for Easy, Normal or Hard: fewer or more invaders, slower or faster.</span></li>
+    <li><strong>High score</strong><span>Best score per difficulty, kept after a reload.</span></li>
+    <li><strong>Freeze star</strong><span>A star appears every 10 s; grab it to freeze the invaders for 3 s.</span></li>
+  </ul>
+</aside>
+</div>
 <script src="vendor/phaser-3.90.0.min.js"></script>
 <script src="settings.js"></script><script src="game.js"></script>
 </body>
