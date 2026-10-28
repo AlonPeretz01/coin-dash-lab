@@ -148,7 +148,7 @@ class CoinDash extends Phaser.Scene {
     this.score = 0;
     this.best = this.loadBest();
     this.finished = false;
-    this.deadline = this.time.now + c.roundSeconds * 1000;
+    this.deadline = null; // set when the countdown reaches GO
     this.physics.world.setBounds(0, 44, c.width, c.height - 44);
     this.makePixelTextures();
     this.drawBackdrop();
@@ -176,7 +176,7 @@ class CoinDash extends Phaser.Scene {
     // Two-frame invader shuffle (same 26x26 texture size, so bodies are unaffected).
     this.droneFrame = 0;
     this.time.addEvent({ delay: 350, loop: true, callback: () => {
-      if (this.finished || this.frozen) return;
+      if (this.counting || this.finished || this.frozen) return;
       this.droneFrame = 1 - this.droneFrame;
       this.drones.getChildren().forEach((d) => d.setTexture('drone' + this.droneFrame));
     } });
@@ -196,6 +196,38 @@ class CoinDash extends Phaser.Scene {
     this.input.keyboard.on('keydown-ONE', () => this.scene.restart({ difficulty: 'easy' }));
     this.input.keyboard.on('keydown-TWO', () => this.scene.restart({ difficulty: 'normal' }));
     this.input.keyboard.on('keydown-THREE', () => this.scene.restart({ difficulty: 'hard' }));
+    this.startCountdown();
+  }
+
+  // "3, 2, 1, GO!" before every round. Physics is paused so nothing moves, and the
+  // round timer and power-ups only start at GO. Timers live on this.time, so a
+  // restart (R / 1 / 2 / 3) mid-countdown simply begins a fresh countdown.
+  startCountdown() {
+    const c = COIN_DASH;
+    this.counting = true;
+    this.physics.pause();
+    const text = this.add.text(c.width / 2, c.height / 2, '', {
+      fontFamily: '"Courier New", Courier, monospace', fontSize: '120px', fontStyle: 'bold',
+      color: c.colors.titleText, stroke: c.colors.blinkText, strokeThickness: 10
+    }).setOrigin(0.5).setDepth(10);
+    const show = (label) => {
+      text.setText(label).setScale(1.6).setAlpha(1);
+      this.tweens.add({ targets: text, scale: 1, duration: 250, ease: 'Back.Out' });
+    };
+    ['3', '2', '1'].forEach((label, i) => this.time.delayedCall(i * 1000, () => show(label)));
+    this.time.delayedCall(3000, () => {
+      show('GO!');
+      this.startRound();
+      this.tweens.add({ targets: text, alpha: 0, delay: 500, duration: 300, onComplete: () => text.destroy() });
+    });
+  }
+
+  startRound() {
+    const c = COIN_DASH;
+    this.counting = false;
+    this.deadline = this.time.now + c.roundSeconds * 1000;
+    this.physics.resume();
+    this.time.addEvent({ delay: c.powerupEvery * 1000, loop: true, callback: () => this.spawnPowerup() });
   }
 
   placeCoin() {
@@ -223,7 +255,7 @@ class CoinDash extends Phaser.Scene {
       fontFamily: '"Courier New", Courier, monospace', fontSize: '18px', fontStyle: 'bold',
       color: c.colors.freezeText
     }).setOrigin(0.5, 0).setVisible(false);
-    this.time.addEvent({ delay: c.powerupEvery * 1000, loop: true, callback: () => this.spawnPowerup() });
+    // The spawn timer is started by startRound(), after the countdown.
     this.physics.add.overlap(this.player, this.powerup, () => {
       if (this.finished || !this.powerup.visible) return;
       this.hidePowerup();
@@ -280,6 +312,10 @@ class CoinDash extends Phaser.Scene {
 
   update() {
     if (this.finished) return;
+    if (this.counting) {
+      this.updateHud(COIN_DASH.roundSeconds);
+      return;
+    }
     const dx = Number(this.cursors.right.isDown || this.keys.D.isDown)
       - Number(this.cursors.left.isDown || this.keys.A.isDown);
     const dy = Number(this.cursors.down.isDown || this.keys.S.isDown)
@@ -291,10 +327,14 @@ class CoinDash extends Phaser.Scene {
       this.freezeText.setText(`FREEZE! ${left}`);
     }
     const seconds = Math.max(0, Math.ceil((this.deadline - this.time.now) / 1000));
+    this.updateHud(seconds);
+    if (seconds === 0) this.finish('Time is up!');
+  }
+
+  updateHud(seconds) {
     const label = COIN_DASH.difficulties[this.difficulty].label.toUpperCase();
     this.hud.setText(`SCORE ${String(this.score).padStart(3, '0')}  BEST ${String(this.best).padStart(3, '0')}`
       + `  ${label}  TIME ${String(seconds).padStart(2, '0')}`);
-    if (seconds === 0) this.finish('Time is up!');
   }
 
   finish(reason) {
