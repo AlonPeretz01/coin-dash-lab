@@ -1,6 +1,108 @@
 /* global Phaser, COIN_DASH */
+
+// Pixel-art sprites as character grids. Each character maps to a palette colour
+// ('.' = transparent). Textures are baked at exactly the physics size, so the
+// sprites keep scale 1 and their bodies match the original shapes.
+const PIXEL_ART = {
+  // 8x8 grid, 3px cells -> 24x24 (player body 24x24)
+  player: { cell: 3, rows: [
+    '..PPPP..',
+    '.PPPPPP.',
+    '.PKPPKP.',
+    '.PPPPPP.',
+    '..PDDP..',
+    'PPPPPPPP',
+    '..P..P..',
+    '.PP..PP.'
+  ] },
+  // 9x9 grid, 2px cells -> 18x18 (coin body circle radius 9)
+  coin: { cell: 2, rows: [
+    '..YYYYY..',
+    '.YWWYYYO.',
+    'YWYYOYYYO',
+    'YWYYOYYYO',
+    'YYYYOYYYO',
+    'YYYYOYYYO',
+    'YYYYOYYYO',
+    '.YYYYYOO.',
+    '..OOOOO..'
+  ] },
+  // 13x13 grid, 2px cells -> 26x26 (drone body 26x26), two animation frames
+  drone0: { cell: 2, rows: [
+    '...D.....D...',
+    '....D...D....',
+    '...DDDDDDD...',
+    '..DDDDDDDDD..',
+    '.DDD.DDD.DDD.',
+    '.DDD.DDD.DDD.',
+    'DDDDDDDDDDDDD',
+    'DDDDDDDDDDDDD',
+    'D.DDDDDDDDD.D',
+    'D.D.......D.D',
+    'D.D.......D.D',
+    '...DD...DD...',
+    '...DD...DD...'
+  ] },
+  drone1: { cell: 2, rows: [
+    '...D.....D...',
+    'D...D...D...D',
+    'D..DDDDDDD..D',
+    'D.DDDDDDDDD.D',
+    'DDDD.DDD.DDDD',
+    'DDDD.DDD.DDDD',
+    'DDDDDDDDDDDDD',
+    '.DDDDDDDDDDD.',
+    '..DDDDDDDDD..',
+    '..D.......D..',
+    '.D.........D.',
+    'D...........D',
+    '.............'
+  ] }
+};
+
 class CoinDash extends Phaser.Scene {
   constructor() { super('CoinDash'); }
+
+  makePixelTextures() {
+    const col = COIN_DASH.colors;
+    const palette = {
+      P: col.player, D: col.drone, K: col.eye, Y: col.coin,
+      O: col.coinShade, W: col.coinShine
+    };
+    // Player "mouth" uses the dark lime; drones use 'D' for their body.
+    const perTexture = { player: { D: col.playerDark } };
+    Object.keys(PIXEL_ART).forEach((key) => {
+      if (this.textures.exists(key)) return; // survives scene.restart()
+      const art = PIXEL_ART[key];
+      const map = Object.assign({}, palette, perTexture[key]);
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      art.rows.forEach((row, y) => {
+        for (let x = 0; x < row.length; x++) {
+          const ch = row[x];
+          if (ch === '.') continue;
+          g.fillStyle(map[ch], 1);
+          g.fillRect(x * art.cell, y * art.cell, art.cell, art.cell);
+        }
+      });
+      g.generateTexture(key, art.rows[0].length * art.cell, art.rows.length * art.cell);
+      g.destroy();
+    });
+  }
+
+  drawBackdrop() {
+    const c = COIN_DASH;
+    const g = this.add.graphics();
+    // Sparse pixel starfield below the HUD bar.
+    for (let i = 0; i < 70; i++) {
+      const size = Math.random() < 0.2 ? 4 : 2;
+      g.fillStyle(c.colors.stars[i % c.colors.stars.length], Math.random() < 0.5 ? 0.35 : 0.7);
+      g.fillRect(Math.floor(Math.random() * c.width / 2) * 2,
+        48 + Math.floor(Math.random() * (c.height - 50) / 2) * 2, size, size);
+    }
+    // Chunky dashed HUD divider on the top playfield edge (y = 44).
+    g.fillStyle(c.colors.accent, 1);
+    for (let x = 0; x < c.width; x += 16) g.fillRect(x, 40, 10, 4);
+  }
 
   create() {
     const c = COIN_DASH;
@@ -8,24 +110,34 @@ class CoinDash extends Phaser.Scene {
     this.finished = false;
     this.deadline = this.time.now + c.roundSeconds * 1000;
     this.physics.world.setBounds(0, 44, c.width, c.height - 44);
-    this.add.grid(c.width / 2, c.height / 2, c.width, c.height, 40, 40,
-      c.colors.background, 1, 0x24334b, 0.45);
-    this.hud = this.add.text(18, 12, '', { font: '18px monospace', color: '#ffffff' });
-    this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24, c.colors.player);
+    this.makePixelTextures();
+    this.drawBackdrop();
+    this.hud = this.add.text(18, 10, '', {
+      fontFamily: '"Courier New", Courier, monospace', fontSize: '22px', fontStyle: 'bold',
+      color: c.colors.hudText
+    });
+    this.player = this.add.image(c.width / 2, c.height / 2, 'player').setDisplaySize(24, 24);
     this.physics.add.existing(this.player);
     this.player.body.setCollideWorldBounds(true);
-    this.coin = this.add.circle(100, 100, 9, c.colors.coin);
+    this.coin = this.add.image(100, 100, 'coin').setDisplaySize(18, 18);
     this.physics.add.existing(this.coin);
     this.coin.body.setCircle(9);
     this.placeCoin();
     this.drones = this.physics.add.group();
     for (let i = 0; i < c.droneCount; i++) {
-      const drone = this.add.rectangle(90 + i * 270, 100, 26, 26, c.colors.drone);
+      const drone = this.add.image(90 + i * 270, 100, 'drone0').setDisplaySize(26, 26);
       this.drones.add(drone);
       drone.body.setCollideWorldBounds(true).setBounce(1, 1);
       const angle = (35 + i * 105) * Math.PI / 180;
       drone.body.setVelocity(Math.cos(angle) * c.droneSpeed, Math.sin(angle) * c.droneSpeed);
     }
+    // Two-frame invader shuffle (same 26x26 texture size, so bodies are unaffected).
+    this.droneFrame = 0;
+    this.time.addEvent({ delay: 350, loop: true, callback: () => {
+      if (this.finished) return;
+      this.droneFrame = 1 - this.droneFrame;
+      this.drones.getChildren().forEach((d) => d.setTexture('drone' + this.droneFrame));
+    } });
     this.physics.add.overlap(this.player, this.coin, () => {
       if (this.finished) return;
       this.score++;
@@ -58,7 +170,7 @@ class CoinDash extends Phaser.Scene {
     const direction = new Phaser.Math.Vector2(dx, dy).normalize().scale(COIN_DASH.playerSpeed);
     this.player.body.setVelocity(direction.x, direction.y);
     const seconds = Math.max(0, Math.ceil((this.deadline - this.time.now) / 1000));
-    this.hud.setText(`Coins: ${this.score}                       Time: ${seconds}s`);
+    this.hud.setText(`SCORE ${String(this.score).padStart(3, '0')}    TIME ${String(seconds).padStart(2, '0')}`);
     if (seconds === 0) this.finish('Time is up!');
   }
 
@@ -67,11 +179,22 @@ class CoinDash extends Phaser.Scene {
     this.finished = true;
     this.physics.pause();
     const c = COIN_DASH;
-    this.add.rectangle(c.width / 2, c.height / 2, 460, 150, 0x0a1120, 0.95);
-    this.add.text(c.width / 2, c.height / 2,
-      `${reason}\n${this.score} coins collected\nPress R to try again`,
-      { font: '24px monospace', color: '#ffffff', align: 'center', lineSpacing: 12 }
-    ).setOrigin(0.5);
+    const font = '"Courier New", Courier, monospace';
+    const cx = c.width / 2, cy = c.height / 2;
+    this.add.rectangle(cx, cy, 480, 230, c.colors.background, 0.92)
+      .setStrokeStyle(6, c.colors.drone);
+    this.add.text(cx, cy - 62, 'GAME OVER', {
+      fontFamily: font, fontSize: '56px', fontStyle: 'bold', color: c.colors.titleText,
+      stroke: '#ff2e93', strokeThickness: 6
+    }).setOrigin(0.5);
+    this.add.text(cx, cy + 8, `${reason.toUpperCase()}\nSCORE ${String(this.score).padStart(3, '0')}`, {
+      fontFamily: font, fontSize: '22px', fontStyle: 'bold', color: c.colors.bodyText,
+      align: 'center', lineSpacing: 8
+    }).setOrigin(0.5);
+    const prompt = this.add.text(cx, cy + 78, 'PRESS R', {
+      fontFamily: font, fontSize: '26px', fontStyle: 'bold', color: c.colors.blinkText
+    }).setOrigin(0.5);
+    this.time.addEvent({ delay: 450, loop: true, callback: () => prompt.setVisible(!prompt.visible) });
   }
 }
 window.coinDashGame = new Phaser.Game({
@@ -80,6 +203,7 @@ window.coinDashGame = new Phaser.Game({
   width: COIN_DASH.width,
   height: COIN_DASH.height,
   backgroundColor: COIN_DASH.colors.background,
+  pixelArt: true,
   physics: { default: 'arcade', arcade: { debug: false } },
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_HORIZONTALLY },
   scene: CoinDash
