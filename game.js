@@ -108,10 +108,32 @@ class CoinDash extends Phaser.Scene {
     this.difficulty = (data && data.difficulty) || this.difficulty || COIN_DASH.defaultDifficulty;
   }
 
+  // Best score per difficulty in localStorage. Storage may be blocked
+  // (private mode, file:// policies), so every access is guarded: best = 0.
+  bestKey() { return 'coinDash.best.' + this.difficulty; }
+
+  loadBest() {
+    try {
+      const n = parseInt(window.localStorage.getItem(this.bestKey()), 10);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  saveBest(value) {
+    try {
+      window.localStorage.setItem(this.bestKey(), String(value));
+    } catch (e) {
+      // Storage unavailable: keep the best for this session only.
+    }
+  }
+
   create() {
     const c = COIN_DASH;
     const level = c.difficulties[this.difficulty];
     this.score = 0;
+    this.best = this.loadBest();
     this.finished = false;
     this.deadline = this.time.now + c.roundSeconds * 1000;
     this.physics.world.setBounds(0, 44, c.width, c.height - 44);
@@ -181,7 +203,8 @@ class CoinDash extends Phaser.Scene {
     this.player.body.setVelocity(direction.x, direction.y);
     const seconds = Math.max(0, Math.ceil((this.deadline - this.time.now) / 1000));
     const label = COIN_DASH.difficulties[this.difficulty].label.toUpperCase();
-    this.hud.setText(`SCORE ${String(this.score).padStart(3, '0')}    ${label}    TIME ${String(seconds).padStart(2, '0')}`);
+    this.hud.setText(`SCORE ${String(this.score).padStart(3, '0')}  BEST ${String(this.best).padStart(3, '0')}`
+      + `  ${label}  TIME ${String(seconds).padStart(2, '0')}`);
     if (seconds === 0) this.finish('Time is up!');
   }
 
@@ -189,20 +212,30 @@ class CoinDash extends Phaser.Scene {
     if (this.finished) return;
     this.finished = true;
     this.physics.pause();
+    const newBest = this.score > this.best;
+    if (newBest) {
+      this.best = this.score;
+      this.saveBest(this.best);
+    }
     const c = COIN_DASH;
     const font = '"Courier New", Courier, monospace';
     const cx = c.width / 2, cy = c.height / 2;
-    this.add.rectangle(cx, cy, 480, 230, c.colors.background, 0.92)
+    this.add.rectangle(cx, cy, 480, 290, c.colors.background, 0.92)
       .setStrokeStyle(6, c.colors.drone);
-    this.add.text(cx, cy - 62, 'GAME OVER', {
+    this.add.text(cx, cy - 92, 'GAME OVER', {
       fontFamily: font, fontSize: '56px', fontStyle: 'bold', color: c.colors.titleText,
       stroke: '#ff2e93', strokeThickness: 6
     }).setOrigin(0.5);
-    this.add.text(cx, cy + 8, `${reason.toUpperCase()}\nSCORE ${String(this.score).padStart(3, '0')}`, {
+    this.add.text(cx, cy - 22, `${reason.toUpperCase()}\nSCORE ${String(this.score).padStart(3, '0')}`, {
       fontFamily: font, fontSize: '22px', fontStyle: 'bold', color: c.colors.bodyText,
       align: 'center', lineSpacing: 8
     }).setOrigin(0.5);
-    const prompt = this.add.text(cx, cy + 78, 'PRESS R', {
+    this.add.text(cx, cy + 34, newBest ? 'NEW HIGH SCORE!' : `BEST ${String(this.best).padStart(3, '0')}`, {
+      fontFamily: font, fontSize: '26px', fontStyle: 'bold',
+      color: newBest ? c.colors.titleText : c.colors.hudText,
+      stroke: c.colors.blinkText, strokeThickness: newBest ? 4 : 0
+    }).setOrigin(0.5);
+    const prompt = this.add.text(cx, cy + 92, 'PRESS R', {
       fontFamily: font, fontSize: '26px', fontStyle: 'bold', color: c.colors.blinkText
     }).setOrigin(0.5);
     this.time.addEvent({ delay: 450, loop: true, callback: () => prompt.setVisible(!prompt.visible) });
