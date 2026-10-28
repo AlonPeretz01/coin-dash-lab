@@ -216,12 +216,16 @@ class CoinDash extends Phaser.Scene {
     this.paused = !this.paused;
     if (this.paused) {
       this.physics.pause();
+      this.time.paused = true; // freezes delayedCall/addEvent timers
       this.pausedAt = this.time.now;
       this.pauseText = this.add.text(COIN_DASH.width / 2, COIN_DASH.height / 2,
         'Paused – press P to resume', { font: '24px monospace', color: '#ffffff' }).setOrigin(0.5);
     } else {
       this.physics.resume();
-      this.deadline += this.time.now - this.pausedAt;
+      this.time.paused = false;
+      const away = this.time.now - this.pausedAt; // now may keep advancing while paused
+      this.deadline += away;
+      this.freezeUntil += away;
       this.pauseText.destroy();
     }
   }
