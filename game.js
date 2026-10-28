@@ -193,8 +193,14 @@ class CoinDash extends Phaser.Scene {
       this.finish('A drone caught you!');
     });
     this.setupPowerup();
+    this.kills = 0;
+    this.lastShot = -1e9;
+    this.aim = { x: 0, y: -1 }; // last move direction, default up
+    this.bullets = this.physics.add.group();
+    this.physics.add.overlap(this.bullets, this.drones, (bullet, drone) => this.shootDrone(bullet, drone));
     this.cursors = this.input.keyboard.createCursorKeys();
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,R');
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,R,SPACE'); // addKeys also stops Space scrolling the page
+    this.input.keyboard.on('keydown-SPACE', () => this.shoot());
     const restart = (difficulty) => {
       if (this.paused) this.physics.resume(); // physics pause must not outlive the scene
       this.scene.restart({ difficulty });
@@ -356,6 +362,50 @@ class CoinDash extends Phaser.Scene {
     });
   }
 
+  shoot() {
+    const c = COIN_DASH;
+    if (this.finished || this.paused || this.counting || this.time.now - this.lastShot < 250) return;
+    this.lastShot = this.time.now;
+    const bullet = this.add.rectangle(this.player.x, this.player.y, 6, 6, c.colors.accent);
+    this.bullets.add(bullet);
+    const v = new Phaser.Math.Vector2(this.aim.x, this.aim.y).normalize().scale(600);
+    bullet.body.setVelocity(v.x, v.y);
+  }
+
+  // New drone on a random arena edge, at least 150 px from the player.
+  spawnDrone() {
+    const c = COIN_DASH;
+    const top = 44 + 13;
+    let x, y;
+    do {
+      const t = Math.random();
+      if (Math.random() < 0.5) { x = 13 + t * (c.width - 26); y = Math.random() < 0.5 ? top : c.height - 13; }
+      else { y = top + t * (c.height - top - 13); x = Math.random() < 0.5 ? 13 : c.width - 13; }
+    } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 150);
+    const drone = this.add.image(x, y, 'drone' + this.droneFrame).setDisplaySize(26, 26);
+    this.drones.add(drone);
+    drone.body.setCollideWorldBounds(true).setBounce(1, 1);
+    const angle = Math.random() * Math.PI * 2;
+    const speed = COIN_DASH.difficulties[this.difficulty].droneSpeed;
+    const v = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+    if (this.frozen) { // joins the freeze; unfreezeDrones restores this velocity
+      drone.setData('velocity', v);
+      drone.setTintFill(c.colors.frozenTint);
+    } else {
+      drone.body.setVelocity(v.x, v.y);
+    }
+  }
+
+  shootDrone(bullet, drone) {
+    bullet.destroy();
+    drone.destroy();
+    this.score += 2;
+    this.kills++;
+    this.beep(660, 0.08, 'square');
+    this.spawnDrone();
+    if (this.kills % 5 === 0) this.spawnDrone();
+  }
+
   update() {
     if (this.finished || this.paused) return;
     if (this.counting) {
@@ -366,6 +416,9 @@ class CoinDash extends Phaser.Scene {
       - Number(this.cursors.left.isDown || this.keys.A.isDown);
     const dy = Number(this.cursors.down.isDown || this.keys.S.isDown)
       - Number(this.cursors.up.isDown || this.keys.W.isDown);
+    if (dx || dy) this.aim = { x: dx, y: dy };
+    this.bullets.getChildren().filter((b) => b.x < 0 || b.x > COIN_DASH.width || b.y < 44 || b.y > COIN_DASH.height)
+      .forEach((b) => b.destroy());
     const direction = new Phaser.Math.Vector2(dx, dy).normalize().scale(COIN_DASH.playerSpeed);
     this.player.body.setVelocity(direction.x, direction.y);
     if (this.frozen) {
@@ -380,7 +433,7 @@ class CoinDash extends Phaser.Scene {
   updateHud(seconds) {
     const label = COIN_DASH.difficulties[this.difficulty].label.toUpperCase();
     this.hud.setText(`SCORE ${String(this.score).padStart(3, '0')}  BEST ${String(this.best).padStart(3, '0')}`
-      + `  ${label}  TIME ${String(seconds).padStart(2, '0')}`);
+      + `  ${label}  TIME ${String(seconds).padStart(2, '0')}  Kills: ${this.kills}`);
   }
 
   finish(reason) {
