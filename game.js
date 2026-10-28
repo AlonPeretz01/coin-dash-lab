@@ -189,6 +189,10 @@ class CoinDash extends Phaser.Scene {
     this.input.keyboard.on('keydown-TWO', () => { if (!this.paused) restart('normal'); });
     this.input.keyboard.on('keydown-THREE', () => { if (!this.paused) restart('hard'); });
     this.input.keyboard.on('keydown-P', () => this.togglePause());
+    // Phaser only unlocks audio on pointer/touch; the game is keyboard-driven.
+    this.input.keyboard.on('keydown', () => {
+      if (this.sound.context && this.sound.context.state === 'suspended') this.sound.context.resume();
+    });
   }
 
   togglePause() {
