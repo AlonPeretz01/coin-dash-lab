@@ -6,6 +6,13 @@ window.COIN_DASH = {
   playerSpeed: 240,
   droneSpeed: 105,
   droneCount: 3,
+  // Difficulty presets (keys 1 / 2 / 3). Normal matches droneSpeed / droneCount above.
+  defaultDifficulty: 'normal',
+  difficulties: {
+    easy: { label: 'Easy', droneSpeed: 80, droneCount: 2 },
+    normal: { label: 'Normal', droneSpeed: 105, droneCount: 3 },
+    hard: { label: 'Hard', droneSpeed: 150, droneCount: 5 }
+  },
   // Retro 8-bit arcade palette (black screen, a few loud colours).
   colors: {
     background: 0x000000,
